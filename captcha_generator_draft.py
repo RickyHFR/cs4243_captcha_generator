@@ -1,3 +1,5 @@
+# Important!! This file is only used as a draft. Actual captcha_generator please refer to the python notebook!!!
+
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
