@@ -1,18 +1,14 @@
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
 import torch.optim as optim
 import os
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+from torchvision import transforms
+from PIL import Image
+from torch.utils.data import Dataset, DataLoader
+from Generator_Discriminator import Generator, Discriminator
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
-
-import os
-from PIL import Image
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 
 class CaptchaDataset(Dataset):
     def __init__(self, image_dir, transform=None):
@@ -33,63 +29,24 @@ class CaptchaDataset(Dataset):
 
 # Define your transformations
 transform = transforms.Compose([
-    transforms.Resize((80, 80)),  # Adjust as needed
+    transforms.Resize((80, 80)),
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])
 ])
 
 # Specify the directory containing captcha images
-image_dir = "main"  # Replace with the path to your 'main' folder
+image_dir = "main"
 
 # Create the dataset and dataloader
 captcha_dataset = CaptchaDataset(image_dir=image_dir, transform=transform)
 dataloader = DataLoader(captcha_dataset, batch_size=128, shuffle=True)
-
-class Generator(nn.Module):
-    def __init__(self, noise_dim, img_channels):
-        super(Generator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(noise_dim, 256),
-            nn.ReLU(True),
-            nn.BatchNorm1d(256),
-            nn.Linear(256, 512),
-            nn.ReLU(True),
-            nn.BatchNorm1d(512),
-            nn.Linear(512, 1024),
-            nn.ReLU(True),
-            nn.BatchNorm1d(1024),
-            nn.Linear(1024, img_channels * 80 * 80),
-            nn.Tanh()
-        )
-
-    def forward(self, x):
-        x = self.model(x)
-        return x.view(-1, 3, 80, 80)  # Assuming RGB captcha of size 64x64
-
-class Discriminator(nn.Module):
-    def __init__(self, img_channels):
-        super(Discriminator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Conv2d(img_channels, 80, kernel_size=5, stride=2, padding=2),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3),
-            nn.Conv2d(80, 128, kernel_size=5, stride=2, padding=2),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3),
-            nn.Flatten(),
-            nn.Linear(128 * 20 * 20, 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        return self.model(x)
     
 # Hyperparameters
 noise_dim = 100
 img_channels = 3
 lr = 0.0002
 batch_size = 128
-epochs = 1
+epochs = 10000
 
 # Initialize models
 generator = Generator(noise_dim, img_channels).to(device)
@@ -99,6 +56,19 @@ discriminator = Discriminator(img_channels).to(device)
 criterion = nn.BCELoss()
 optimizer_g = optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999))
 optimizer_d = optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
+
+file_path = "model/generator.pth"
+if os.path.getsize(file_path) > 0 and torch.cuda.is_available():
+    # Load the saved state
+    generator.load_state_dict(torch.load('model/generator.pth'))
+    discriminator.load_state_dict(torch.load('model/discriminator.pth'))
+    optimizer_g.load_state_dict(torch.load('model/optimizer_g.pth'))
+    optimizer_d.load_state_dict(torch.load('model/optimizer_d.pth'))
+elif os.path.getsize(file_path) > 0:
+    generator.load_state_dict(torch.load('model/generator.pth', map_location=torch.device('cpu')))
+    discriminator.load_state_dict(torch.load('model/discriminator.pth', map_location=torch.device('cpu')))
+    optimizer_g.load_state_dict(torch.load('model/optimizer_g.pth', map_location=torch.device('cpu')))
+    optimizer_d.load_state_dict(torch.load('model/optimizer_d.pth', map_location=torch.device('cpu')))
 
 # Training loop
 for epoch in range(epochs):
@@ -133,11 +103,10 @@ for epoch in range(epochs):
         g_loss.backward()
         optimizer_g.step()
     if epoch % 1 == 0:
+        # save the model every 10 epochs
+        torch.save(generator.state_dict(), 'model/generator.pth')
+        torch.save(discriminator.state_dict(), 'model/discriminator.pth')
+        torch.save(optimizer_g.state_dict(), 'model/optimizer_g.pth')
+        torch.save(optimizer_d.state_dict(), 'model/optimizer_d.pth')
         print(f"Epoch [{epoch}/{epochs}] | D Loss: {d_loss.item()} | G Loss: {g_loss.item()}")
-
-# Save the model
-torch.save(generator.state_dict(), 'model/generator.pth')
-torch.save(discriminator.state_dict(), 'model/discriminator.pth')
-# Save the optimizer states
-torch.save(optimizer_g.state_dict(), 'model/optimizer_g.pth')
-torch.save(optimizer_d.state_dict(), 'model/optimizer_d.pth')
+        
